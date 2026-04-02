@@ -15,15 +15,7 @@ products = pd.DataFrame({
     'category': ['Coffee', 'Tea', 'Chocolate']
 })
 
-# --- SUPPLIERS ---
-suppliers = pd.DataFrame({
-    'supplier_id': [1, 2],
-    'supplier_name': ['Bean & Brew Co.', 'Leaf & Spice Ltd.'],
-    'contact_email': ['orders@beanbrew.com', 'supply@leafspice.com'],
-    'phone_number': ['617-555-0101', '617-555-0202']
-})
-
-# --- TRANSACTIONS ---
+# --- Sales ---
 # Base daily sales per product, with weekend bump
 records = []
 tid = 1
@@ -44,41 +36,18 @@ for i, date in enumerate(dates):
         records.append({
             'transaction_id': tid,
             'product_id': pid,
-            'transaction_type': 'sale',
             'transaction_date': date.date(),
             'quantity': qty
         })
         tid += 1
 
-    # Restocks every 21 days per supplier
-    if i % 21 == 0:
-        # Supplier 1 restocks Coffee Beans
-        records.append({
-            'transaction_id': tid,
-            'product_id': 1,
-            'transaction_type': 'purchase',
-            'transaction_date': date.date(),
-            'quantity': 400
-        })
-        tid += 1
-        # Supplier 2 restocks Green Tea and Hot Chocolate
-        for pid in [2, 3]:
-            records.append({
-                'transaction_id': tid,
-                'product_id': pid,
-                'transaction_type': 'purchase',
-                'transaction_date': date.date(),
-                'quantity': 250
-            })
-            tid += 1
-
-transactions = pd.DataFrame(records)
+sales = pd.DataFrame(records)
 
 # --- INVENTORY ---
 # Calculate current stock per product from transactions
 inventory_records = []
 for pid in [1, 2, 3]:
-    prod_tx = transactions[transactions['product_id'] == pid]
+    prod_tx = sales[sales['product_id'] == pid]
     purchased = prod_tx[prod_tx['transaction_type'] == 'purchase']['quantity'].sum()
     sold = prod_tx[prod_tx['transaction_type'] == 'sale']['quantity'].sum()
     current_stock = purchased - sold
@@ -95,8 +64,7 @@ inventory = pd.DataFrame(inventory_records)
 
 # --- SAVE ---
 products.to_csv('products.csv', index=False)
-suppliers.to_csv('suppliers.csv', index=False)
-transactions.to_csv('transactions.csv', index=False)
+transactions.to_csv('sales.csv', index=False)
 inventory.to_csv('inventory.csv', index=False)
 
 print("CSVs saved.")
