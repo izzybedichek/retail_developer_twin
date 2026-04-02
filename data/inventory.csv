@@ -1,0 +1,4 @@
+inventory_id,product_id,quantity,supplier_id,last_updated
+1,1,184,1,2026-04-02
+2,2,465,2,2026-04-02
+3,3,80,2,2026-04-02
