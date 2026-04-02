@@ -15,7 +15,7 @@ params = {
 	"daily": ["temperature_2m_max", "rain_sum", "snowfall_sum", "precipitation_sum"],
 	"timezone": "auto",
 	"start_date": "2026-01-03",
-	"end_date": "2026-03-03",
+	"end_date": "2026-04-02",
 }
 r    = requests.get("https://archive-api.open-meteo.com/v1/archive", params=params)
 data = r.json()

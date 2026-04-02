@@ -1,6 +1,7 @@
 # https://pypi.org/project/prophet/
 import pandas as pd
 from prophet import Prophet
+import matplotlib.pyplot as plt
 
 ### Goal: "Days until stock-out" prediction per item. ###
 
@@ -13,12 +14,11 @@ print(weather.isna().sum())
 print(inventory.isna().sum())
 
 # making sure both date columns are date type and named appropraitely
-inventory["record_date"] = pd.to_datetime(inventory["record_date"])
-weather["time"] = pd.to_datetime(weather["time"])
-inventory.rename(columns={"record_date": "ds"}, inplace=True)
-weather.rename(columns={"time": "ds"}, inplace=True)
+inventory["ds"] = pd.to_datetime(inventory["record_date"])
+weather["ds"] = pd.to_datetime(weather["time"])
 
-df = inventory.merge(weather, on="ds", how="left")
+df = inventory.merge(weather, on="ds", how="inner")
+print(df.isna().sum())
 
 df.rename(columns={"quantity": "y"}, inplace=True)
 
@@ -27,8 +27,7 @@ df.rename(columns={"quantity": "y"}, inplace=True)
 # Claude prompted as well
 
 # Prophet requires columns named exactly "ds" and "y"
-prophet_df = df.reset_index()[["ds", "y"]]
-print(prophet_df)
+regressors = ["temp_max", "rain_sum", "snowfall_sum", "precipitation_sum"]
 
 # --- add weather as regressors ---
 for col in ["temp_max", "rain_sum", "snowfall_sum", "precipitation_sum"]:
@@ -44,14 +43,22 @@ m = Prophet(
 
 # adding regressors
 m.add_regressor("temp_max")
-m.add_regressor("precipitation_sum")
 m.add_regressor("rain_sum")
 m.add_regressor("snowfall_sum")
+m.add_regressor("precipitation_sum")
 
 # fitting model
 m.fit(prophet_df)
 
 # predicting
-future = m.make_future_dataframe(periods = 30, freq='1D')
+future = m.make_future_dataframe(periods = 30, freq='D')
+forecast = m.predict(future)
 
-print(future)
+# Plot forecast
+fig = m.plot(forecast)
+plt.title('Inventory Forecast with Prophet')
+plt.show()
+
+# Plot components
+fig2 = m.plot_components(forecast)
+plt.show()
