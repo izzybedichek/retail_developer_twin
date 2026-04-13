@@ -2,11 +2,11 @@ import sqlite3
 import os
 
 # wipe existing database
-if os.path.exists('inventory.db'):
-    os.remove('inventory.db')
+if os.path.exists("data/inventory.db"):
+    os.remove("data/inventory.db")
 
 # ref https://sqldocs.org/sqlite-create-database/, https://docs.python.org/3/library/sqlite3.html
-connection = sqlite3.connect('inventory.db')
+connection = sqlite3.connect("data/inventory.db")
 
 # needed to execute queries
 cur = connection.cursor()

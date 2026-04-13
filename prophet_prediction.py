@@ -2,12 +2,15 @@
 import pandas as pd
 from prophet import Prophet
 import matplotlib.pyplot as plt
+from functions import weather_forecast
+import sqlite3
 
 ### Goal: "Days until stock-out" prediction per item. ###
 
 # reading in all data
-weather = pd.read_csv("data/palo_alto_weather.csv")
-inventory = pd.read_csv("data/inventory.csv")
+weather = weather_forecast.copy()
+conn = sqlite3.connect("data/inventory.db")
+inventory = pd.read_sql("SELECT * FROM inventory", conn)
 
 # double-checking for missingness
 print(weather.isna().sum())
@@ -26,14 +29,14 @@ df.rename(columns={"quantity": "y"}, inplace=True)
 # ref https://nbviewer.org/github/nicolasfauchereau/Auckland_Cycling/blob/master/notebooks/Auckland_cycling_and_weather.ipynb
 # Claude prompted as well
 
-# Prophet requires columns named exactly "ds" and "y"
+# other regressors
 regressors = ["temp_max", "rain_sum", "snowfall_sum", "precipitation_sum"]
 
 # --- add weather as regressors ---
 for col in ["temp_max", "rain_sum", "snowfall_sum", "precipitation_sum"]:
-    prophet_df[col] = df[col].values
+    df[col] = df[col].values
 
-print(prophet_df.columns.tolist())
+print(df.columns.tolist())
 
 m = Prophet(
     yearly_seasonality=False,
@@ -48,17 +51,22 @@ m.add_regressor("snowfall_sum")
 m.add_regressor("precipitation_sum")
 
 # fitting model
-m.fit(prophet_df)
+m.fit(df)
 
 # predicting
-future = m.make_future_dataframe(periods = 30, freq='D')
+future = m.make_future_dataframe(periods = 30, freq="D")
+
+# Combine historical weather + forecast weather
+all_weather = pd.concat([
+    weather[["ds", "temp_max", "rain_sum", "snowfall_sum", "precipitation_sum"]],
+    weather_forecast[["ds", "temp_max", "rain_sum", "snowfall_sum", "precipitation_sum"]]]).drop_duplicates(subset="ds")
+
+future = future.merge(all_weather, on="ds", how="left")
+
+# Only dates beyond the 16-day forecast window need imputation
+for col in regressors:
+    future[col] = future[col].fillna(df[col].mean())
+
 forecast = m.predict(future)
 
-# Plot forecast
-fig = m.plot(forecast)
-plt.title('Inventory Forecast with Prophet')
-plt.show()
-
-# Plot components
-fig2 = m.plot_components(forecast)
-plt.show()
+print(forecast)
