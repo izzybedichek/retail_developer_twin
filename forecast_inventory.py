@@ -1,30 +1,39 @@
 import sqlite3
 import pandas as pd
 from prophet import Prophet
+import streamlit as st
 
-# connecting to database
-conn = sqlite3.connect("data/inventory.db")
+# ref streamlit documentation and Claude for formatting
 
-# Aggregate sales per product per day; Prophet 'y'
-sales = pd.read_sql("""
-    SELECT 
-        product_id,
-        transaction_date AS ds,
-        SUM(quantity)    AS y
-    FROM Sales
-    GROUP BY product_id, transaction_date
-    ORDER BY product_id, transaction_date
-""", conn)
+@st.cache_resource
+def get_connection():
+    return sqlite3.connect("data/inventory.db", check_same_thread=False)
 
-# Current stock level per product (for stockout calculation)
-stock = pd.read_sql("""
-    SELECT product_id, quantity
-    FROM Inventory
-    WHERE record_date = (
-        SELECT MAX(record_date) FROM Inventory i2 
-        WHERE i2.product_id = Inventory.product_id
-    )
-""", conn)
+@st.cache_data
+def load_data():
+    # connecting to database
+    conn = sqlite3.connect("data/inventory.db")
 
-products = pd.read_sql("SELECT * FROM Products", conn)
-conn.close()
+    # Aggregate sales per product per day; Prophet 'y'
+    sales = pd.read_sql("""
+                        SELECT product_id,
+                               transaction_date AS ds,
+                               SUM(quantity)    AS y
+                        FROM Sales
+                        GROUP BY product_id, transaction_date
+                        ORDER BY product_id, transaction_date
+                        """, conn)
+
+    # Current stock level per product (for stockout calculation)
+    stock = pd.read_sql("""
+                        SELECT product_id, quantity
+                        FROM Inventory
+                        WHERE record_date = (SELECT MAX(record_date)
+                                             FROM Inventory i2
+                                             WHERE i2.product_id = Inventory.product_id)
+                        """, conn)
+
+    products = pd.read_sql("SELECT * FROM Products", conn)
+    conn.close()
+    sales["ds"] = pd.to_datetime(sales["ds"])
+    return sales, stock, products

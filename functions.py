@@ -1,54 +1,84 @@
 import requests
 import pandas as pd
 from prophet import Prophet
+from datetime import date, timedelta
+import streamlit as st
 
-def days_until_stockout(product_id, forecast_df, stock_df):
-    current_stock = stock_df.loc[stock_df.product_id == product_id, "quantity"].values[0]
-    future = forecast_df[forecast_df["ds"] > pd.Timestamp.today()].copy()
-    future["cumulative"] = future["yhat"].clip(lower=0).cumsum()
-    stockout_row = future[future["cumulative"] >= current_stock]
-    if stockout_row.empty:
-        return None  # won't stock out within forecast window
-    return (stockout_row["ds"].iloc[0] - pd.Timestamp.today()).days
+REGRESSORS = ["temp_max", "rain_sum", "snowfall_sum", "precipitation_sum"]
 
-def forecast_product(product_df, weather_historical, weather_future, periods=30):
-    """Takes sales rows for ONE product, returns forecast df."""
-    m = Prophet(weekly_seasonality=True, yearly_seasonality=False, daily_seasonality=False)
-    for col in ["temp_max", "rain_sum", "snowfall_sum", "precipitation_sum"]:
-        m.add_regressor(col)
+def geocode_location(city_name):
+    url = "https://geocoding-api.open-meteo.com/v1/search"
+    params = {"name": city_name, "count": 1, "language": "en", "format": "json"}
+    data = requests.get(url, params=params).json()
+    if not data.get("results"):
+        return None, None
+    result = data["results"][0]
+    return result["latitude"], result["longitude"]
 
-    df = product_df.merge(weather_historical, on="ds", how="inner")
-    m.fit(df)
-
-    future = m.make_future_dataframe(periods=periods, freq='D')
-    future = future.merge(weather_future, on="ds", how="left")
-    for col in ["temp_max", "rain_sum", "snowfall_sum", "precipitation_sum"]:
-        future[col] = future[col].fillna(df[col].mean())
-
-    return m.predict(future)
-
-def get_weather_forecast(days=30):
-    # Palo Alto coordinates
+@st.cache_data
+def get_weather_forecast(lat, lon, days=16):
+    """Future weather — Open-Meteo forecast API, up to 16 days ahead."""
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
-        "latitude": 37.4419,
-        "longitude": -122.1430,
-        "daily": [
-            "temperature_2m_max",
-            "rain_sum",
-            "snowfall_sum",
-            "precipitation_sum"
-        ],
-        "forecast_days": 16,  # max is 16 days
-        "timezone": "America/Los_Angeles"
+        "latitude": lat,
+        "longitude": lon,
+        "daily": ["temperature_2m_max", "rain_sum", "snowfall_sum", "precipitation_sum"],
+        "forecast_days": days,
+        "timezone": "auto"
     }
-    response = requests.get(url, params=params)
-    data = response.json()
-
-    df = pd.DataFrame(data["daily"])
+    df = pd.DataFrame(requests.get(url, params=params).json()["daily"])
     df["ds"] = pd.to_datetime(df["time"])
-    df = df.rename(columns={"temperature_2m_max": "temp_max"})
-    df = df.drop(columns=["time"])
-    return df
+    return df.rename(columns={"temperature_2m_max": "temp_max"}).drop(columns=["time"])
 
-weather_forecast = get_weather_forecast()
+@st.cache_data
+def get_weather_historical(lat, lon, df):
+    """Historical weather from Open-Meteo archive API, for days overlapping with sales data given"""
+    start = df["ds"].min().date()
+    end = df["ds"].max().date()
+    url = "https://archive-api.open-meteo.com/v1/archive"
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "daily": ["temperature_2m_max", "rain_sum", "snowfall_sum", "precipitation_sum"],
+        "start_date": start.isoformat(),
+        "end_date": end.isoformat(),
+        "timezone": "auto"
+    }
+    df = pd.DataFrame(requests.get(url, params=params).json()["daily"])
+    df["ds"] = pd.to_datetime(df["time"])
+    return df.rename(columns={"temperature_2m_max": "temp_max"}).drop(columns=["time"])
+
+def forecast_product(product_df, weather_hist, weather_future, periods=30):
+    """Takes sales rows for ONE product, returns (model, forecast_df)."""
+
+    # trim sales to dates we actually have weather for
+    valid_dates = weather_hist["ds"]
+    product_df = product_df[product_df["ds"].isin(valid_dates)]
+
+    if len(product_df) < 2:
+        return None, None
+
+    m = Prophet(weekly_seasonality=True, yearly_seasonality=False, daily_seasonality=False)
+    for col in REGRESSORS:
+        m.add_regressor(col)
+
+    df = product_df.merge(weather_hist[["ds"] + REGRESSORS], on="ds", how="inner")
+    if len(df) < 2:
+        return None, None
+    m.fit(df)
+
+    # future weather data is used for future dates
+    future = m.make_future_dataframe(periods=periods, freq="D")
+    future = future.merge(weather_future[["ds"] + REGRESSORS], on="ds", how="left")
+    for col in REGRESSORS:
+        future[col] = future[col].fillna(df[col].mean())
+
+    return m, m.predict(future)
+
+def days_until_stockout(forecast_df, current_stock):
+    future = forecast_df[forecast_df["ds"] > pd.Timestamp.today()].copy()
+    future["cumulative"] = future["yhat"].clip(lower=0).cumsum()
+    hit = future[future["cumulative"] >= current_stock]
+    if hit.empty:
+        return None
+    return int((hit["ds"].iloc[0] - pd.Timestamp.today()).days)
