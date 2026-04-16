@@ -26,7 +26,7 @@ if city:
         st.sidebar.error("City not found, try a different name or find the city nearest to you with a valid Meteostat weather station")
 
 # sales upload via file
-st.header("FIRST: Upload your sales data")
+st.header("Upload your sales data")
 uploaded = st.file_uploader("CSV with at least 3 months of sales", type="csv")
 
 if uploaded:
@@ -95,16 +95,26 @@ if "results" in st.session_state:
             st.write(f"Weather hist rows: {len(weather_hist)}, range: {weather_hist['ds'].min()} to {weather_hist['ds'].max()}")
             st.write(f"Sales date range: {sales['ds'].min()} to {sales['ds'].max()}")
     else:
-        card_cols = st.columns(len(results))
-        for i, (pid, data) in enumerate(results.items()):
-            name_row = products.loc[products.product_id == pid, "product_name"]
-            label = name_row.values[0] if len(name_row) else f"Product {pid}"
-            days  = data["days"]
-            with card_cols[i]:
-                st.metric(label=label,
-                          value=f"{days} days" if days else "30+ days",
-                          delta=f"{data['stock']} in stock")
+        # Customizable threshold
+        threshold = st.slider("Show products running out within (days)", min_value=1, max_value=90, value=14)
 
+        # Filter to only products within threshold
+        urgent = {pid: data for pid, data in results.items() if data["days"] and data["days"] <= threshold}
+
+        if not urgent:
+            st.success(f"No products running out within {threshold} days!")
+        else:
+            st.warning(f"{len(urgent)} product(s) need ordering within {threshold} days:")
+
+            # Clean list of urgent products
+            for pid, data in urgent.items():
+                name_row = products.loc[products.product_id == pid, "product_name"]
+                label = name_row.values[0] if len(name_row) else f"Product {pid}"
+                st.write(f"**{label}** — {data['days']} days until stockout ({data['stock']} in stock)")
+
+        # Detailed view for any product
+        st.divider()
+        st.subheader("Detailed forecast by product")
         pid_options = list(results.keys())
         selected = st.selectbox(
             "Select product",
