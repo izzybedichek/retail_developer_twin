@@ -76,9 +76,12 @@ def forecast_product(product_df, weather_hist, weather_future, periods=30):
     return m, m.predict(future)
 
 def days_until_stockout(forecast_df, current_stock):
-    future = forecast_df[forecast_df["ds"] > pd.Timestamp.today()].copy()
+    if current_stock <= 0:
+        return 0
+    future = forecast_df.copy()
     future["cumulative"] = future["yhat"].clip(lower=0).cumsum()
     hit = future[future["cumulative"] >= current_stock]
     if hit.empty:
         return None
-    return int((hit["ds"].iloc[0] - pd.Timestamp.today()).days)
+    days = int((hit["ds"].iloc[0] - future["ds"].iloc[0]).days)
+    return days
