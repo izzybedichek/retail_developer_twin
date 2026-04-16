@@ -24,6 +24,3 @@ df = pd.DataFrame(data["daily"])
 df["time"] = pd.to_datetime(df["time"])
 df = df.set_index("time")
 df.columns = ["temp_max", "rain_sum", "snowfall_sum", "precipitation_sum"]
-
-print(df.head(10))
-df.to_csv("palo_alto_weather.csv")

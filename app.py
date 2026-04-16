@@ -361,8 +361,8 @@ elif step == 3:
             fig_monthly.update_yaxes(rangemode="nonnegative")
             st.plotly_chart(fig_monthly, use_container_width=True)
 
-            # ── 30-day forecast ──
-            st.subheader("30-day forecast")
+            # ── Forecast ──
+            st.subheader("Forecast")
             fc_plot = fc.copy()
             fc_plot["yhat"] = fc_plot["yhat"].clip(lower=0)
             fc_plot["yhat_upper"] = fc_plot["yhat_upper"].clip(lower=0)

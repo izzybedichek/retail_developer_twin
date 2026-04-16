@@ -48,6 +48,7 @@ def get_weather_historical(lat, lon, df):
     df["ds"] = pd.to_datetime(df["time"])
     return df.rename(columns={"temperature_2m_max": "temp_max"}).drop(columns=["time"])
 
+
 def forecast_product(product_df, weather_hist, weather_future, periods=30):
     """Takes sales rows for ONE product, returns (model, forecast_df)."""
 
@@ -73,7 +74,15 @@ def forecast_product(product_df, weather_hist, weather_future, periods=30):
     for col in REGRESSORS:
         future[col] = future[col].fillna(df[col].mean())
 
-    return m, m.predict(future)
+    # Build a future dataframe starting from TODAY, not from end of training data
+    today = pd.Timestamp.today().normalize()
+    future_dates = pd.DataFrame({"ds": pd.date_range(start=today, periods=periods, freq="D")})
+    future_dates = future_dates.merge(weather_future[["ds"] + REGRESSORS], on="ds", how="left")
+    for col in REGRESSORS:
+        future_dates[col] = future_dates[col].fillna(df[col].mean())
+
+    fc = m.predict(future_dates)
+    return m, fc
 
 def days_until_stockout(forecast_df, current_stock):
     if current_stock <= 0:
